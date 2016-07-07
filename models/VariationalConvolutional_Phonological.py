@@ -1,3 +1,58 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
+import numpy as np
+import gensim
+import regex
+from sklearn import preprocessing
+import skimage.transform as skt
+import sys
+import pandas
+import h5py
+from keras.preprocessing.sequence import pad_sequences
+
+
+#########
+#PREPROCESSING
+############
+from gensim.models.word2vec import *
+import pickle
+fname = "/Users/marlon/Documents/pythonWorkspace/KerasSandbox/KerasSandbox/GensimSkipGramNegativeSamplingVectors/model.pkl"
+#fname = "gensimWord2vecPhonemeVectors_150_20d_window2_PhonemeLength3.pkl"
+model = Word2Vec.load(fname)
+pathDictionary = "/Users/marlon/Documents/pythonWorkspace/KerasSandbox/KerasSandbox/Resources/languages.pkl"
+dictionary = pickle.load(open(pathDictionary , "rb" ) )
+languages = ["POLISH"
+             ,"RUSSIAN","UKRAINIAN","CZECH","SLOVAK","CROATIAN","BULGARIAN","SLOVENIAN","BOSNIAN",
+             "LATVIAN","LITHUANIAN",
+             "TURKISH","AZERBAIJANI_NORTH","UZBEK",
+             "STANDARD_GERMAN","ENGLISH","DUTCH","EASTERN_FRISIAN","FRISIAN_WESTERN","AFRIKAANS",
+             "DANISH","SWEDISH","NORWEGIAN_BOKMAAL","NORWEGIAN_NYNORSK_TOTEN","NORWEGIAN_RIKSMAL",
+             "ICELANDIC","FAROESE",
+             "ITALIAN","ROMANSH_SURSILVAN","FRENCH","OCCITAN_ARANESE","CATALAN","BALEAR_CATALAN",
+             "SPANISH","PORTUGUESE","ROMANIAN",
+             "WELSH","BRETON","CORNISH","GAELIC_SCOTTISH","IRISH_GAELIC",
+             "BASQUE",
+             "HUNGARIAN","FINNISH","ESTONIAN"
+             ]
+maxLength = 20
+from utils import WordMeaningOrganizer
+words,wordVectors,meanings = WordMeaningOrganizer.getWordMeaningMatrices(dictionary=dictionary,
+                                                    languages=languages,
+                                                    model=model,
+                                                    maxLength=maxLength
+                                                    ,boundary="#")
+print(words.shape,wordVectors.shape,meanings.shape)
+print(words[0,0],len(words[0,0]))
+nDim_phono = wordVectors.shape[2]
+n_meanings = meanings.shape[2]
+n_langs = wordVectors.shape[1]
+nDim_PhonemeVectors = int(wordVectors.shape[2]/maxLength)
+min_max_scaler = preprocessing.MinMaxScaler()
+wordVectors = np.reshape(min_max_scaler.fit_transform(np.reshape(wordVectors,(-1,nDim_phono))),(n_meanings,n_langs,-1))
+
+
+
 
 #########
 #NETWORK
@@ -15,7 +70,7 @@ batch_size = len(wordVectors.reshape((-1,nDim_phono)))
 batch_size = 28
 original_dim_phono = nDim_phono
 original_dim_meaning = n_meanings
-latent_dim = 1500
+latent_dim = 500
 intermediate_dim_phono = 128
 intermediate_dim_meaning = 128
 intermediate_dim_concat = 128
@@ -35,15 +90,8 @@ x_phono = MaxPooling2D((2,2))(x_phono)
 h_phono = Reshape((32*5*50,))(x_phono)
 
 
-x_meaning = Input(batch_shape=(batch_size, original_dim_meaning))
-
-h_meaning = Dense(intermediate_dim_meaning, activation='relu')(x_meaning)
-
-h_concat = merge([h_phono,h_meaning],mode="concat")
-h_concat = Dense(intermediate_dim_concat, activation='relu')(h_concat)
-
-z_mean = Dense(latent_dim)(h_concat)
-z_log_std = Dense(latent_dim)(h_concat)
+z_mean = Dense(latent_dim)(h_phono)
+z_log_std = Dense(latent_dim)(h_phono)
 
 def sampling(args):
     z_mean, z_log_std = args
@@ -75,29 +123,20 @@ y_phono5_reshaper =  Reshape((nDim_phono,),name="decoded_phono")
 decoded_phono = y_phono5_reshaper(y_phono5)
 
 
-decoder_h_meaning = Dense(intermediate_dim_meaning, activation='relu')
-decoder_mean_meaning = Dense(original_dim_meaning, activation='softmax',name="decoder_mean_meaning")
-h_decoded_meaning = decoder_h_meaning(z)
-x_decoded_mean_meaning = decoder_mean_meaning(h_decoded_meaning)
-
 def vae_loss(x_phono,decoded_phono):
-    ent_loss_meaning = objectives.categorical_crossentropy(x_meaning, x_decoded_mean_meaning)
     mse_loss_phono = objectives.mse(x_phono, decoded_phono)
     kl_loss = - 0.5 * K.mean(1 + z_log_std - K.square(z_mean) - K.exp(z_log_std), axis=-1)
-    return (ent_loss_meaning +
+    return (
              mse_loss_phono + kl_loss)
 
-vae = Model([input_phono,x_meaning], [decoded_phono,x_decoded_mean_meaning])
-vae.compile(optimizer='rmsprop', loss=vae_loss)
+vae = Model([input_phono], [decoded_phono])
+vae.compile(optimizer='Adam', loss=vae_loss)
 
-vae.fit(x=[wordVectors.reshape((-1,nDim_phono)),
-           meanings.reshape((-1,n_meanings))], y=[wordVectors.reshape((-1,nDim_phono)),
-                                                                                       meanings.reshape((-1,n_meanings))
-                                                                                       ],
+vae.fit(x=[wordVectors.reshape((-1,nDim_phono))],
+         y=[wordVectors.reshape((-1,nDim_phono))],
       batch_size=batch_size, nb_epoch=nb_epoch)
-encoder = Model( [input_phono,x_meaning], z_mean)
-embeddings = encoder.predict(x=[wordVectors.reshape((-1,nDim_phono)),
-           meanings.reshape((-1,n_meanings))],batch_size=batch_size)
+encoder = Model( [input_phono], z_mean)
+embeddings = encoder.predict(x=[wordVectors.reshape((-1,nDim_phono))],batch_size=batch_size)
 
 # generator, from latent space to reconstructed inputs
 
@@ -115,7 +154,3 @@ y_phono5_generator = conv3_decoder(y_phono4_generator)
 decoded_phono_generator = y_phono5_reshaper(y_phono5_generator)
 
 generator_phono = Model(generator_input, decoded_phono_generator)
-
-h_decoded_meaning_generator = decoder_h_meaning(generator_input)
-x_decoded_mean_meaning_generator = decoder_mean_meaning(h_decoded_meaning_generator)
-generator_meaning = Model(generator_input, x_decoded_mean_meaning_generator)
