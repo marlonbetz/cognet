@@ -75,7 +75,7 @@ intermediate_dim_phono = 128
 intermediate_dim_meaning = 128
 intermediate_dim_concat = 128
 epsilon_std = 0.01
-nb_epoch = 200
+nb_epoch = 100
 #l2_value = 0.01
 l2_value = 0
 
@@ -153,4 +153,56 @@ y_phono4_generator = upSampling2_decoder(y_phono3_generator)
 y_phono5_generator = conv3_decoder(y_phono4_generator)
 decoded_phono_generator = y_phono5_reshaper(y_phono5_generator)
 
+generator_phono = Model(generator_input, decoded_phono_generator)
+
+
+from utils.WordReconstructor import *
+wr_eucl = WordReconstructor(X=[model[w] for w in list(model.vocab.keys())],y=list(model.vocab.keys()),metric="euclidean")
+wr_cos = WordReconstructor(X=[model[w] for w in list(model.vocab.keys())],y=list(model.vocab.keys()),metric="cosine")
+for word,code in zip(words.flatten()[:],embeddings[:]):
+    #code = embeddings[0]
+    #print(code)
+    decoded_p = generator_phono.predict(code.reshape(-1,latent_dim))
+    decoded_p=min_max_scaler.inverse_transform(decoded_p)
+
+    #decoded_p = min_max_scaler.inverse_transform(decoded_p)
+    decoded_p = decoded_p.reshape((maxLength,nDim_PhonemeVectors))
+    decoded_p_eucl = wr_eucl.reconstruct(decoded_p)
+    decoded_p_cos = wr_cos.reconstruct(decoded_p)
+    decoded_p_eucl = "".join([d[0] for d in decoded_p_eucl])
+    decoded_p_cos = "".join([d[0] for d in decoded_p_cos])
+    
+    #decoded_m = generator_meaning.predict(code.reshape(-1,latent_dim))
+    print(word,decoded_p_eucl,decoded_p_cos)
+    #print(decoded_p)
+    #print(decoded_m)
+    
+print("linear transformations ...")
+from utils import vectorLinspace
+import codecs
+f = codecs.open("linear_transformations.txt","w")
+for word1,code1 in zip(words.flatten()[80:100],embeddings[80:100]):
+    f.write("--------\n")
+    for word2,code2 in zip(words.flatten()[80:100],embeddings[80:100]):
+        f.write("---\n")
+
+        if word1 != word2:
+            
+            for code_tmp in vectorLinspace(start=code1.flatten(), stop=code2.flatten(), num=10):
+                
+                decoded_p = generator_phono.predict(code_tmp.reshape(-1,latent_dim))
+                decoded_p=min_max_scaler.inverse_transform(decoded_p)
+            
+                #decoded_p = min_max_scaler.inverse_transform(decoded_p)
+                decoded_p = decoded_p.reshape((maxLength,nDim_PhonemeVectors))
+                decoded_p_eucl = wr_eucl.reconstruct(decoded_p)
+                decoded_p_cos = wr_cos.reconstruct(decoded_p)
+                decoded_p_eucl = "".join([d[0] for d in decoded_p_eucl])
+                decoded_p_cos = "".join([d[0] for d in decoded_p_cos])
+                
+                f.write(word1+" "+word2+" "+str(decoded_p_eucl)+" "+str(decoded_p_cos)+"\n")
+                
+pandas.DataFrame(embeddings.transpose(),columns=words.flatten()).to_csv("CogNetEmbeddings.csv")
+
+sys.exit()
 generator_phono = Model(generator_input, decoded_phono_generator)
