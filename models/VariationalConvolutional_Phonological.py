@@ -17,40 +17,61 @@ from keras.preprocessing.sequence import pad_sequences
 ############
 from gensim.models.word2vec import *
 import pickle
+import ASJPData
 fname = "/Users/marlon/Documents/pythonWorkspace/KerasSandbox/KerasSandbox/GensimSkipGramNegativeSamplingVectors/model.pkl"
 #fname = "gensimWord2vecPhonemeVectors_150_20d_window2_PhonemeLength3.pkl"
 model = Word2Vec.load(fname)
-pathDictionary = "/Users/marlon/Documents/pythonWorkspace/KerasSandbox/KerasSandbox/Resources/languages.pkl"
-dictionary = pickle.load(open(pathDictionary , "rb" ) )
-languages = ["POLISH"
-             ,"RUSSIAN","UKRAINIAN","CZECH","SLOVAK","CROATIAN","BULGARIAN","SLOVENIAN","BOSNIAN",
-             "LATVIAN","LITHUANIAN",
-             "TURKISH","AZERBAIJANI_NORTH","UZBEK",
-             "STANDARD_GERMAN","ENGLISH","DUTCH","EASTERN_FRISIAN","FRISIAN_WESTERN","AFRIKAANS",
-             "DANISH","SWEDISH","NORWEGIAN_BOKMAAL","NORWEGIAN_NYNORSK_TOTEN","NORWEGIAN_RIKSMAL",
-             "ICELANDIC","FAROESE",
-             "ITALIAN","ROMANSH_SURSILVAN","FRENCH","OCCITAN_ARANESE","CATALAN","BALEAR_CATALAN",
-             "SPANISH","PORTUGUESE","ROMANIAN",
-             "WELSH","BRETON","CORNISH","GAELIC_SCOTTISH","IRISH_GAELIC",
-             "BASQUE",
-             "HUNGARIAN","FINNISH","ESTONIAN"
-             ]
+# pathDictionary = "/Users/marlon/Documents/pythonWorkspace/KerasSandbox/KerasSandbox/Resources/languages.pkl"
+# dictionary = pickle.load(open(pathDictionary , "rb" ) )
+# languages = ["POLISH"
+#              ,"RUSSIAN","UKRAINIAN","CZECH","SLOVAK","CROATIAN","BULGARIAN","SLOVENIAN","BOSNIAN",
+#              "LATVIAN","LITHUANIAN",
+#              "TURKISH","AZERBAIJANI_NORTH","UZBEK",
+#              "STANDARD_GERMAN","ENGLISH","DUTCH","EASTERN_FRISIAN","FRISIAN_WESTERN","AFRIKAANS",
+#              "DANISH","SWEDISH","NORWEGIAN_BOKMAAL","NORWEGIAN_NYNORSK_TOTEN","NORWEGIAN_RIKSMAL",
+#              "ICELANDIC","FAROESE",
+#              "ITALIAN","ROMANSH_SURSILVAN","FRENCH","OCCITAN_ARANESE","CATALAN","BALEAR_CATALAN",
+#              "SPANISH","PORTUGUESE","ROMANIAN",
+#              "WELSH","BRETON","CORNISH","GAELIC_SCOTTISH","IRISH_GAELIC",
+#              "BASQUE",
+#              "HUNGARIAN","FINNISH","ESTONIAN"
+#              ]
 maxLength = 20
-from utils import WordMeaningOrganizer
-words,wordVectors,meanings = WordMeaningOrganizer.getWordMeaningMatrices(dictionary=dictionary,
-                                                    languages=languages,
-                                                    model=model,
-                                                    maxLength=maxLength
-                                                    ,boundary="#")
-print(words.shape,wordVectors.shape,meanings.shape)
-print(words[0,0],len(words[0,0]))
-nDim_phono = wordVectors.shape[2]
-n_meanings = meanings.shape[2]
-n_langs = wordVectors.shape[1]
-nDim_PhonemeVectors = int(wordVectors.shape[2]/maxLength)
-min_max_scaler = preprocessing.MinMaxScaler()
-wordVectors = np.reshape(min_max_scaler.fit_transform(np.reshape(wordVectors,(-1,nDim_phono))),(n_meanings,n_langs,-1))
+# from utils import WordMeaningOrganizer
+# words,wordVectors,meanings = WordMeaningOrganizer.getWordMeaningMatrices(dictionary=dictionary,
+#                                                     languages=languages,
+#                                                     model=model,
+#                                                     maxLength=maxLength
+#                                                     ,boundary="#")
+# print(words.shape,wordVectors.shape,meanings.shape)
+nDim_PhonemeVectors = 200
+nDim_phono = nDim_PhonemeVectors*maxLength
+# nDim_phono = wordVectors.shape[2]
+# n_meanings = meanings.shape[2]
+# n_langs = wordVectors.shape[1]
+# nDim_PhonemeVectors = int(wordVectors.shape[2]/maxLength)
+# min_max_scaler = preprocessing.MinMaxScaler()
+# wordVectors = np.reshape(min_max_scaler.fit_transform(np.reshape(wordVectors,(-1,nDim_phono))),(n_meanings,n_langs,-1))
 
+import ASJPData.Language as Language
+languages = Language.loadLanguagesFromASJP("/Users/marlon/Documents/pythonWorkspace/cognet/ASJPData/data/dataset.tab")
+
+languages = Language.getListOfLanguagesWithoutSpecificInfo(languages,"wls_gen","ARTIFICIAL")
+words = Language.extractListOfWords(languages,minLength = 1)
+print(len(words))
+
+wordVectors = np.zeros((len(words),nDim_PhonemeVectors*maxLength))
+from utils import getWordMatrix
+for i in range(len(words)):
+    wordVectors[i] = getWordMatrix(words[i], model, padToMaxLength=maxLength).flatten()
+#scaler = preprocessing.StandardScaler().fit(wordVectors)
+#wordVectors = scaler.transforrm(wordVectors)
+    #     for word in language.wordList:
+#         if len(word) > 0:
+#             print(word)
+#             print(getWordMatrix(word, model, padToMaxLength=20).shape)
+
+#sys.exit()
 
 
 
@@ -67,15 +88,15 @@ from keras.regularizers import l2
 
 
 batch_size = len(wordVectors.reshape((-1,nDim_phono)))
-batch_size = 28
+batch_size = 389
 original_dim_phono = nDim_phono
-original_dim_meaning = n_meanings
+#original_dim_meaning = n_meanings
 latent_dim = 500
 intermediate_dim_phono = 128
 intermediate_dim_meaning = 128
 intermediate_dim_concat = 128
 epsilon_std = 0.01
-nb_epoch = 100
+nb_epoch = 1
 #l2_value = 0.01
 l2_value = 0
 
@@ -136,8 +157,8 @@ vae.fit(x=[wordVectors.reshape((-1,nDim_phono))],
          y=[wordVectors.reshape((-1,nDim_phono))],
       batch_size=batch_size, nb_epoch=nb_epoch)
 encoder = Model( [input_phono], z_mean)
-embeddings = encoder.predict(x=[wordVectors.reshape((-1,nDim_phono))],batch_size=batch_size)
-
+#embeddings = encoder.predict(x=[wordVectors.reshape((-1,nDim_phono))],batch_size=batch_size)
+#embeddings = encoder.predict(x=wordVectors,batch_size=batch_size)
 # generator, from latent space to reconstructed inputs
 
 
@@ -157,52 +178,76 @@ generator_phono = Model(generator_input, decoded_phono_generator)
 
 
 from utils.WordReconstructor import *
-wr_eucl = WordReconstructor(X=[model[w] for w in list(model.vocab.keys())],y=list(model.vocab.keys()),metric="euclidean")
-wr_cos = WordReconstructor(X=[model[w] for w in list(model.vocab.keys())],y=list(model.vocab.keys()),metric="cosine")
-for word,code in zip(words.flatten()[:],embeddings[:]):
-    #code = embeddings[0]
-    #print(code)
-    decoded_p = generator_phono.predict(code.reshape(-1,latent_dim))
-    decoded_p=min_max_scaler.inverse_transform(decoded_p)
 
-    #decoded_p = min_max_scaler.inverse_transform(decoded_p)
-    decoded_p = decoded_p.reshape((maxLength,nDim_PhonemeVectors))
-    decoded_p_eucl = wr_eucl.reconstruct(decoded_p)
-    decoded_p_cos = wr_cos.reconstruct(decoded_p)
-    decoded_p_eucl = "".join([d[0] for d in decoded_p_eucl])
-    decoded_p_cos = "".join([d[0] for d in decoded_p_cos])
-    
-    #decoded_m = generator_meaning.predict(code.reshape(-1,latent_dim))
-    print(word,decoded_p_eucl,decoded_p_cos)
-    #print(decoded_p)
-    #print(decoded_m)
-    
-print("linear transformations ...")
-from utils import vectorLinspace
-import codecs
-f = codecs.open("linear_transformations.txt","w")
-for word1,code1 in zip(words.flatten()[80:100],embeddings[80:100]):
-    f.write("--------\n")
-    for word2,code2 in zip(words.flatten()[80:100],embeddings[80:100]):
-        f.write("---\n")
+#wr_eucl = WordReconstructor(X=[model[w] for w in list(model.vocab.keys())],y=list(model.vocab.keys()),metric="euclidean")
+#wr_cos = WordReconstructor(X=[model[w] for w in list(model.vocab.keys())],y=list(model.vocab.keys()),metric="cosine")
 
-        if word1 != word2:
-            
-            for code_tmp in vectorLinspace(start=code1.flatten(), stop=code2.flatten(), num=10):
-                
-                decoded_p = generator_phono.predict(code_tmp.reshape(-1,latent_dim))
-                decoded_p=min_max_scaler.inverse_transform(decoded_p)
-            
-                #decoded_p = min_max_scaler.inverse_transform(decoded_p)
-                decoded_p = decoded_p.reshape((maxLength,nDim_PhonemeVectors))
-                decoded_p_eucl = wr_eucl.reconstruct(decoded_p)
-                decoded_p_cos = wr_cos.reconstruct(decoded_p)
-                decoded_p_eucl = "".join([d[0] for d in decoded_p_eucl])
-                decoded_p_cos = "".join([d[0] for d in decoded_p_cos])
-                
-                f.write(word1+" "+word2+" "+str(decoded_p_eucl)+" "+str(decoded_p_cos)+"\n")
-                
-pandas.DataFrame(embeddings.transpose(),columns=words.flatten()).to_csv("CogNetEmbeddings.csv")
+print("creating embeddings ...")
+c_lang = 0
+for lang in languages:
+    print(c_lang,"/",len(languages),lang.info["name"])
+    embeddings = []
+    c_word = 0
+    for word in lang.wordList:
+        if len(word) > 0:
+            embeddings.append(encoder.predict(getWordMatrix(word, model, padToMaxLength=maxLength).reshape(1,-1),batch_size=1))
+                            
+        else:
+            embeddings.append(None)
+        
+        c_word += 1
+    lang.info["embeddings"] = embeddings
+    c_lang += 1
+print("pickling ...")
+pickle.dump(languages,open("languages_varconv.pkl","wb"))
 
-sys.exit()
-generator_phono = Model(generator_input, decoded_phono_generator)
+
+# 
+# 
+# for word,code in zip(words.flatten()[:],embeddings[:]):
+#     #code = embeddings[0]
+#     #print(code)
+#     decoded_p = generator_phono.predict(code.reshape(-1,latent_dim))
+#     decoded_p=min_max_scaler.inverse_transform(decoded_p)
+# 
+#     #decoded_p = min_max_scaler.inverse_transform(decoded_p)
+#     decoded_p = decoded_p.reshape((maxLength,nDim_PhonemeVectors))
+#     decoded_p_eucl = wr_eucl.reconstruct(decoded_p)
+#     decoded_p_cos = wr_cos.reconstruct(decoded_p)
+#     decoded_p_eucl = "".join([d[0] for d in decoded_p_eucl])
+#     decoded_p_cos = "".join([d[0] for d in decoded_p_cos])
+#     
+#     #decoded_m = generator_meaning.predict(code.reshape(-1,latent_dim))
+#     print(word,decoded_p_eucl,decoded_p_cos)
+#     #print(decoded_p)
+#     #print(decoded_m)
+#     
+# print("linear transformations ...")
+# from utils import vectorLinspace
+# import codecs
+# f = codecs.open("linear_transformations.txt","w")
+# for word1,code1 in zip(words.flatten()[80:100],embeddings[80:100]):
+#     f.write("--------\n")
+#     for word2,code2 in zip(words.flatten()[80:100],embeddings[80:100]):
+#         f.write("---\n")
+# 
+#         if word1 != word2:
+#             
+#             for code_tmp in vectorLinspace(start=code1.flatten(), stop=code2.flatten(), num=10):
+#                 
+#                 decoded_p = generator_phono.predict(code_tmp.reshape(-1,latent_dim))
+#                 decoded_p=min_max_scaler.inverse_transform(decoded_p)
+#             
+#                 #decoded_p = min_max_scaler.inverse_transform(decoded_p)
+#                 decoded_p = decoded_p.reshape((maxLength,nDim_PhonemeVectors))
+#                 decoded_p_eucl = wr_eucl.reconstruct(decoded_p)
+#                 decoded_p_cos = wr_cos.reconstruct(decoded_p)
+#                 decoded_p_eucl = "".join([d[0] for d in decoded_p_eucl])
+#                 decoded_p_cos = "".join([d[0] for d in decoded_p_cos])
+#                 
+#                 f.write(word1+" "+word2+" "+str(decoded_p_eucl)+" "+str(decoded_p_cos)+"\n")
+#                 
+# pandas.DataFrame(embeddings.transpose(),columns=words.flatten()).to_csv("CogNetEmbeddings.csv")
+# 
+# sys.exit()
+# generator_phono = Model(generator_input, decoded_phono_generator)
