@@ -59,12 +59,12 @@ def getListOfLanguagesWithoutSpecificInfo(languages,key,value):
     return languages_tmp
     
 def extractListOfWords(languages,minLength=1):
-    tmp = []
+    tmp_word = []
     for lang in languages:
         for w in lang.wordList:
             if len(w) >= minLength:
-                tmp.append(w)
-    return tmp
+                tmp_word.append(w)
+    return tmp_word
 
 
 def getSetOfUncompleteConcepts(languages):
